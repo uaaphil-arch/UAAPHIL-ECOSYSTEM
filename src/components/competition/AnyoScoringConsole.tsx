@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Lock,
   ChevronRight,
-  RotateCcw,
   Sparkles,
   Loader2,
   UserX,
@@ -107,16 +106,89 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
       !isReadOnly
   );
 
-  // Can call this specific active performance? (Must be WAITING/CALLED, no other performer is PERFORMING, and must be the next eligible in sequence)
+  // Physical Check-In / Marshalling State Registry (persisted per session)
+  const [checkedInIds, setCheckedInIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(`anyo_checked_in_${session.id}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load anyo checked in IDs from storage:', e);
+    }
+    return [];
+  });
+
+  // Auto-sync performers that are already CALLED, PERFORMING, or COMPLETED as inherently checked-in
+  useEffect(() => {
+    const activeOrCompletedIds = performances
+      .filter((p) => p.status === 'CALLED' || p.status === 'PERFORMING' || p.status === 'COMPLETED')
+      .map((p) => p.id);
+
+    if (activeOrCompletedIds.length > 0) {
+      setCheckedInIds((prev) => {
+        const combined = Array.from(new Set([...prev, ...activeOrCompletedIds]));
+        if (combined.length !== prev.length) {
+          try {
+            localStorage.setItem(`anyo_checked_in_${session.id}`, JSON.stringify(combined));
+          } catch (e) {
+            console.warn('Failed to persist checked-in IDs:', e);
+          }
+          return combined;
+        }
+        return prev;
+      });
+    }
+  }, [performances, session.id]);
+
+  const isPerformanceCheckedIn = (perfId: string): boolean => {
+    const perf = performances.find((p) => p.id === perfId);
+    if (!perf) return false;
+    if (perf.status === 'CALLED' || perf.status === 'PERFORMING' || perf.status === 'COMPLETED') {
+      return true;
+    }
+    return checkedInIds.includes(perfId);
+  };
+
+  const handleToggleCheckIn = (perfId: string) => {
+    if (isReadOnly) {
+      setErrorMessage('Unauthorized: Check-in actions are restricted to authorized tournament officials.');
+      return;
+    }
+    const isCurrentlyCheckedIn = checkedInIds.includes(perfId);
+    let nextIds: string[];
+    if (isCurrentlyCheckedIn) {
+      nextIds = checkedInIds.filter((id) => id !== perfId);
+      setSuccessMessage('Physical check-in revoked for competitor.');
+    } else {
+      nextIds = [...checkedInIds, perfId];
+      setSuccessMessage('Competitor physically checked in and marked READY.');
+    }
+    setCheckedInIds(nextIds);
+    try {
+      localStorage.setItem(`anyo_checked_in_${session.id}`, JSON.stringify(nextIds));
+    } catch (e) {
+      console.warn('Failed to persist checked in IDs to storage:', e);
+    }
+  };
+
+  const isActiveCheckedIn = activePerformance ? isPerformanceCheckedIn(activePerformance.id) : false;
+
+  const [isCallingPerformer, setIsCallingPerformer] = useState(false);
+
+  // Can call this specific active performance? (Must be WAITING, physically checked in, no other performer is PERFORMING, and must be the next eligible in sequence)
   const isNextEligible = activePerformance?.id === nextEligiblePerformance?.id;
   const hasActivePerformer = Boolean(performingPerformance && performingPerformance.id !== activePerformance?.id);
   const canCallActive = Boolean(
     activePerformance &&
-      (activePerformance.status === 'WAITING' || activePerformance.status === 'CALLED') &&
+      activePerformance.status === 'WAITING' &&
+      isActiveCheckedIn &&
       !hasActivePerformer &&
       isNextEligible &&
       session.status !== 'FINALIZED' &&
-      !isReadOnly
+      !isReadOnly &&
+      !isCallingPerformer
   );
 
   // In-progress inputs map (keyed by `${perfId}_${tier}`) to prevent data loss on realtime refreshes (INV-ANYO-UI-03 / F-ANYO-01)
@@ -179,10 +251,10 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
     const group9 = Array.from({ length: 10 }, (_, i) => Number((9 + i * 0.1).toFixed(1)));
     const group10 = [10.0];
     return [
-      { label: '7.x Tier', scores: group7 },
-      { label: '8.x Tier', scores: group8 },
-      { label: '9.x Tier', scores: group9 },
-      { label: '10.0 Tier', scores: group10 },
+      { label: '7.x Range', scores: group7 },
+      { label: '8.x Range', scores: group8 },
+      { label: '9.x Range', scores: group9 },
+      { label: '10.0 Range', scores: group10 },
     ];
   }, []);
 
@@ -244,17 +316,6 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
     setErrorMessage(null);
   };
 
-  const handleResetInputs = () => {
-    if (!canScore || isReadOnly || !activePerformance) return;
-    const currentKey = `${activePerformance.id}_${activeTier}`;
-    setInProgressInputs((prev) => {
-      const next = { ...prev };
-      delete next[currentKey];
-      return next;
-    });
-    setJudgeInputs(Array(panelCount).fill(0));
-  };
-
   const handleSubmitScores = async () => {
     if (!activePerformance || !canScore || isReadOnly) return;
     if (!allJudgesEntered) {
@@ -293,12 +354,18 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
   };
 
   const handleCallPerformer = async (perfId: string) => {
+    if (isCallingPerformer || isReadOnly) return;
+    setIsCallingPerformer(true);
+    setErrorMessage(null);
     try {
       await anyoScoringService.callPerformer(perfId);
       setSelectedPerformanceId(perfId);
+      setSuccessMessage('Athlete successfully called to court.');
       onRefresh();
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to call competitor.');
+    } finally {
+      setIsCallingPerformer(false);
     }
   };
 
@@ -483,6 +550,19 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
   // Flatten all medal tied performances for UI badges
   const medalTiedPerformances = medalTiedClusters.flatMap((c) => c.performances);
 
+  // Derive whether the active performer is an unresolved medal-contending tie participant (P-ANYO-UI-TIER-SEMANTICS-01)
+  const isTiedMedalContender = useMemo(() => {
+    if (!activePerformance || medalTiedPerformances.length === 0) return false;
+    return medalTiedPerformances.some((p) => p.id === activePerformance.id);
+  }, [activePerformance, medalTiedPerformances]);
+
+  // Ensure activeTier strictly defaults/resets to TIER_1 whenever active competitor is not a tied medal contender
+  useEffect(() => {
+    if (!isTiedMedalContender && activeTier !== 'TIER_1') {
+      setActiveTier('TIER_1');
+    }
+  }, [isTiedMedalContender, activeTier]);
+
   const renderSeedBadge = (perf: AnyoPerformance) => {
     const tier = perf.seed_tier || 5;
 
@@ -632,7 +712,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
                 className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-40 disabled:cursor-not-allowed text-amber-300 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 border border-amber-500/40 animate-pulse"
               >
                 <Vote className="w-4 h-4" />
-                <span>Tier 3 Majority Vote</span>
+                <span>Majority Vote Tie Resolution</span>
               </button>
             )}
 
@@ -780,18 +860,30 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             perf.status === 'PERFORMING'
                               ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
-                              : perf.id === nextEligiblePerformance?.id && !performingPerformance
+                              : perf.status === 'CALLED'
                               ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                               : perf.status === 'DQ' || perf.status === 'NO_SHOW'
                               ? 'bg-red-950 text-red-400 border border-red-800'
-                              : 'bg-slate-800 text-slate-400'
+                              : isPerformanceCheckedIn(perf.id)
+                              ? perf.id === nextEligiblePerformance?.id && !performingPerformance
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/60'
+                              : 'bg-amber-950/40 text-amber-400/90 border border-amber-800/40'
                           }`}
                         >
                           {perf.status === 'PERFORMING'
                             ? 'PERFORMING'
-                            : perf.id === nextEligiblePerformance?.id && !performingPerformance
-                            ? 'UP NEXT'
-                            : perf.status}
+                            : perf.status === 'CALLED'
+                            ? 'CALLED'
+                            : perf.status === 'DQ'
+                            ? 'DQ'
+                            : perf.status === 'NO_SHOW'
+                            ? 'NO SHOW'
+                            : isPerformanceCheckedIn(perf.id)
+                            ? perf.id === nextEligiblePerformance?.id && !performingPerformance
+                              ? 'READY • NEXT'
+                              : 'CHECKED IN • READY'
+                            : 'NOT CHECKED IN'}
                         </span>
                       )}
                     </div>
@@ -812,7 +904,35 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
                   <div className="text-xs text-amber-400 font-semibold tracking-wider uppercase flex items-center gap-2 flex-wrap">
                     <span>Performance #{activePerformance.order_number}</span>
                     <span>•</span>
-                    <span className="text-slate-400">{activePerformance.status}</span>
+                    <span
+                      className={
+                        activePerformance.status === 'PERFORMING'
+                          ? 'text-amber-400 font-bold'
+                          : activePerformance.status === 'CALLED'
+                          ? 'text-blue-400 font-bold'
+                          : activePerformance.status === 'COMPLETED'
+                          ? 'text-emerald-400 font-bold'
+                          : activePerformance.status === 'DQ' || activePerformance.status === 'NO_SHOW'
+                          ? 'text-red-400 font-bold'
+                          : isActiveCheckedIn
+                          ? 'text-emerald-400 font-bold'
+                          : 'text-amber-400/90 font-medium'
+                      }
+                    >
+                      {activePerformance.status === 'PERFORMING'
+                        ? 'PERFORMING'
+                        : activePerformance.status === 'CALLED'
+                        ? 'ATHLETE CALLED TO COURT'
+                        : activePerformance.status === 'COMPLETED'
+                        ? 'COMPLETED'
+                        : activePerformance.status === 'DQ'
+                        ? 'DISQUALIFIED (DQ)'
+                        : activePerformance.status === 'NO_SHOW'
+                        ? 'NO SHOW'
+                        : isActiveCheckedIn
+                        ? 'CHECKED IN • READY'
+                        : 'NOT CHECKED IN • AWAITING MARSHALLING'}
+                    </span>
                     <span>•</span>
                     {renderSeedBadge(activePerformance)}
                   </div>
@@ -826,41 +946,55 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
 
                 {/* Status & Tier Switcher */}
                 <div className="flex items-center gap-2">
-                  {(activePerformance.status === 'WAITING' || activePerformance.status === 'CALLED') && (
-                    <button
-                      onClick={() => handleCallPerformer(activePerformance.id)}
-                      disabled={!canCallActive}
-                      className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 text-xs font-bold rounded-xl transition-colors shadow-md flex items-center gap-1.5"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Call / Start Performing</span>
-                    </button>
+                  {isTiedMedalContender ? (
+                    <div className="flex bg-slate-950 border border-amber-500/50 rounded-xl p-1 shadow-sm">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTier('TIER_1')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                          activeTier === 'TIER_1'
+                            ? 'bg-slate-800 text-slate-200 shadow'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Standard Initial Scoring
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTier('TIER_2')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 ${
+                          activeTier === 'TIER_2'
+                            ? 'bg-amber-500 text-slate-950 shadow'
+                            : 'text-amber-400 hover:text-amber-300'
+                        }`}
+                      >
+                        <Trophy className="w-3.5 h-3.5" />
+                        <span>Tie-Break Re-Performance</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-slate-300">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      <span>Standard Initial Scoring</span>
+                    </div>
                   )}
-
-                  <div className="flex bg-slate-950 border border-slate-800 rounded-xl p-1">
-                    <button
-                      onClick={() => setActiveTier('TIER_1')}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
-                        activeTier === 'TIER_1'
-                          ? 'bg-amber-500 text-slate-950 shadow'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Tier 1
-                    </button>
-                    <button
-                      onClick={() => setActiveTier('TIER_2')}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
-                        activeTier === 'TIER_2'
-                          ? 'bg-amber-500 text-slate-950 shadow'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Tier 2 Re-Score
-                    </button>
-                  </div>
                 </div>
               </div>
+
+              {/* Tier 2 Exception Notice */}
+              {isTiedMedalContender && activeTier === 'TIER_2' && (
+                <div className="bg-amber-950/40 border border-amber-600/50 rounded-xl p-3.5 flex items-start gap-3">
+                  <Info className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                  <div className="text-xs space-y-1">
+                    <div className="font-semibold text-amber-200 flex items-center gap-2">
+                      <span>MEDAL TIE — TIE-BREAK RE-PERFORMANCE REQUIRED (EXCEPTION ONLY)</span>
+                    </div>
+                    <div className="text-amber-300/90">
+                      Exception-only re-performance for legitimate medal-contending ties. {activePerformance.registration?.user_profile?.full_name} is tied at {activePerformance.final_score?.toFixed(2)} pts.
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Historical Seeding Basis Card (If available) */}
               {activePerformance.seed_tier && activePerformance.seed_tier < 5 && (
@@ -921,7 +1055,6 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
                   activeTier={activeTier}
                   calcMethod={session.calc_method}
                   onScoreSelect={handleScoreSelect}
-                  onResetInputs={handleResetInputs}
                   onSubmitScores={handleSubmitScores}
                   onDqOrNoShow={handleDqOrNoShow}
                   onNextCompetitor={handleNextCompetitor}
@@ -948,8 +1081,13 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
                   performance={activePerformance}
                   nextEligiblePerformance={nextEligiblePerformance}
                   performingPerformance={performingPerformance}
+                  isCheckedIn={isActiveCheckedIn}
                   canCall={canCallActive}
+                  isCalling={isCallingPerformer}
                   isReadOnly={isReadOnly}
+                  panelCount={panelCount}
+                  scoreGroups={SCORE_GROUPS}
+                  onToggleCheckIn={handleToggleCheckIn}
                   onCallPerformer={handleCallPerformer}
                   onDqOrNoShow={handleDqOrNoShow}
                   onNextCompetitor={handleNextCompetitor}
@@ -971,7 +1109,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
             <div className="flex items-center gap-3 text-amber-400">
               <Vote className="w-6 h-6" />
               <div>
-                <h3 className="text-lg font-bold text-slate-100">Tier 3 Re-Performance Majority Vote</h3>
+                <h3 className="text-lg font-bold text-slate-100">Majority Vote Tie Resolution</h3>
                 <div className="text-xs text-amber-400 font-mono">
                   {panelCount}-Judge Panel — Strict Majority Threshold: {Math.floor(panelCount / 2) + 1} votes
                 </div>
@@ -1123,7 +1261,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
                 onClick={handleSubmitTier3}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl shadow-md transition-colors"
               >
-                Confirm Tier 3 Resolution
+                Confirm Majority Vote Resolution
               </button>
             </div>
           </div>

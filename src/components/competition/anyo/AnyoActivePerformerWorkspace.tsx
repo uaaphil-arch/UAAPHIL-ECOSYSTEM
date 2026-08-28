@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Sparkles,
-  RotateCcw,
   UserX,
   CheckCircle2,
   ChevronRight,
@@ -27,7 +26,6 @@ interface AnyoActivePerformerWorkspaceProps {
   activeTier: AnyoTieTier;
   calcMethod: string;
   onScoreSelect: (judgeIndex: number, scoreValue: number) => void;
-  onResetInputs: () => void;
   onSubmitScores: () => void;
   onDqOrNoShow: (outcome: 'DQ' | 'NO_SHOW') => void;
   onNextCompetitor: () => void;
@@ -44,7 +42,6 @@ export const AnyoActivePerformerWorkspace: React.FC<AnyoActivePerformerWorkspace
   activeTier,
   calcMethod,
   onScoreSelect,
-  onResetInputs,
   onSubmitScores,
   onDqOrNoShow,
   onNextCompetitor,
@@ -54,9 +51,16 @@ export const AnyoActivePerformerWorkspace: React.FC<AnyoActivePerformerWorkspace
       {/* Judge Input Matrix */}
       <div className="space-y-4">
         <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-          <span className="font-semibold uppercase tracking-wider">
-            Judge Score Cards ({panelCount} Judges)
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-bold text-emerald-400 uppercase tracking-wider">
+              LIVE JUDGE SCORING
+            </span>
+            <span className="text-slate-500">•</span>
+            <span className="font-semibold uppercase tracking-wider">
+              Judge Score Cards ({panelCount} Judges)
+            </span>
+          </div>
           <span className="text-amber-400/90 font-medium">
             Standard Scale: 7.0 – 10.0 (in 0.1 increments)
           </span>
@@ -168,16 +172,6 @@ export const AnyoActivePerformerWorkspace: React.FC<AnyoActivePerformerWorkspace
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onResetInputs}
-            disabled={isReadOnly}
-            className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-4 h-4" />
-            Reset
-          </button>
-
-          <button
-            type="button"
             onClick={() => onDqOrNoShow('DQ')}
             disabled={isReadOnly}
             className="px-3 py-2.5 bg-red-950/60 hover:bg-red-900/80 border border-red-800 disabled:opacity-30 disabled:cursor-not-allowed text-red-300 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1"
@@ -216,7 +210,7 @@ export const AnyoActivePerformerWorkspace: React.FC<AnyoActivePerformerWorkspace
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Submit {activeTier} Score</span>
+                <span>Submit {activeTier === 'TIER_2' ? 'Tie-Break Re-Performance' : 'Standard Initial'} Score</span>
               </>
             )}
           </button>

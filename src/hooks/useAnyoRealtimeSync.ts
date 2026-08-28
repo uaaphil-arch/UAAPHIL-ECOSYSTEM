@@ -133,15 +133,17 @@ export function useAnyoRealtimeSync({
           isChannelSubscribedRef.current = true;
           if (isMountedRef.current) {
             const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-            if (isOnline && lastSyncTimeRef.current) {
-              const age = (Date.now() - lastSyncTimeRef.current) / 1000;
-              setSyncState(age > staleThresholdSeconds ? 'STALE' : 'LIVE');
+            if (!isOnline) {
+              setSyncState('OFFLINE');
+            } else {
+              setSyncState((prev) => (prev === 'SYNCING' || prev === 'RECOVERING' ? prev : 'LIVE'));
             }
           }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           isChannelSubscribedRef.current = false;
           if (isMountedRef.current) {
-            setSyncState('OFFLINE');
+            const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+            setSyncState(isOnline ? 'STALE' : 'OFFLINE');
           }
         }
       });
@@ -172,8 +174,8 @@ export function useAnyoRealtimeSync({
     window.addEventListener('offline', handleOffline);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Periodic freshness evaluator (every 1s)
-    const freshnessInterval = setInterval(() => {
+    // Periodic connection health evaluator (every 1s)
+    const healthInterval = setInterval(() => {
       if (!isMountedRef.current) return;
       const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
@@ -182,20 +184,19 @@ export function useAnyoRealtimeSync({
         return;
       }
 
-      if (lastSyncTimeRef.current) {
-        const elapsedSecs = (Date.now() - lastSyncTimeRef.current) / 1000;
-        if (elapsedSecs > staleThresholdSeconds) {
-          setSyncState((prev) => (prev === 'SYNCING' ? 'SYNCING' : 'STALE'));
-        } else if (isChannelSubscribedRef.current) {
-          setSyncState((prev) => (prev === 'SYNCING' ? 'SYNCING' : 'LIVE'));
-        }
+      if (isChannelSubscribedRef.current) {
+        // Healthy active subscription - maintain LIVE state (unless currently in middle of an in-flight sync/recovery)
+        setSyncState((prev) => (prev === 'SYNCING' || prev === 'RECOVERING' ? prev : 'LIVE'));
+      } else {
+        // Channel failed, closed, or timed out
+        setSyncState((prev) => (prev === 'SYNCING' || prev === 'RECOVERING' ? prev : 'STALE'));
       }
     }, 1000);
 
     return () => {
       isMountedRef.current = false;
       if (debounceTimer) clearTimeout(debounceTimer);
-      clearInterval(freshnessInterval);
+      clearInterval(healthInterval);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
