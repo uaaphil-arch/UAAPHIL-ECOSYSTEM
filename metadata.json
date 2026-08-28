@@ -1,0 +1,8 @@
+{
+  "name": "UAAPHIL Ecosystem",
+  "description": "UAAPHIL Tournament System for tracking team standings and player statistics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

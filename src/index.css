@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  header, aside, .no-print {
+    display: none !important;
+  }
+
+  .certificate-page {
+    page-break-after: always;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin: 0 auto;
+    box-shadow: none !important;
+  }
+
+  .result-book-document,
+  .printable-weighin-canvas,
+  .printable-schedule-canvas,
+  .printable-club-canvas,
+  .print-bracket-canvas {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .result-book-document *,
+  .printable-weighin-canvas *,
+  .printable-schedule-canvas *,
+  .printable-club-canvas *,
+  .print-bracket-canvas * {
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  .print-bracket-canvas {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .page-break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+@page {
+  margin: 10mm;
+}
