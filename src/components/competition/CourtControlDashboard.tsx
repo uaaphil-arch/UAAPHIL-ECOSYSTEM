@@ -297,6 +297,7 @@ export const CourtControlDashboard: React.FC = () => {
           performances={activeAnyoSession.performances}
           scores={activeAnyoSession.scores}
           isReadOnly={!canRecordScores}
+          isOperationsReadOnly={!isOfficialAuthorized}
           onRefresh={handleRefreshAnyoSession}
           onOpenScoreboard={() => setActiveAnyoScoreboard(activeAnyoSession)}
         />

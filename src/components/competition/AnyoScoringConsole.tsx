@@ -39,6 +39,7 @@ interface AnyoScoringConsoleProps {
   performances: AnyoPerformance[];
   scores: AnyoScore[];
   isReadOnly?: boolean;
+  isOperationsReadOnly?: boolean;
   onRefresh: () => void;
   onOpenScoreboard: () => void;
 }
@@ -48,6 +49,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
   performances,
   scores,
   isReadOnly = false,
+  isOperationsReadOnly,
   onRefresh,
   onOpenScoreboard,
 }) => {
@@ -147,8 +149,10 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
     return !!perf && ['CHECKED_IN', 'CALLED', 'PERFORMING', 'COMPLETED'].includes(perf.status);
   };
 
+  const operationsReadOnly = isOperationsReadOnly ?? isReadOnly;
+
   const handleCheckIn = async (perfId: string) => {
-    if (isReadOnly) {
+    if (operationsReadOnly) {
       setErrorMessage('Unauthorized: Check-in actions are restricted to authorized tournament officials.');
       return;
     }
@@ -176,7 +180,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
       !hasActivePerformer &&
       isNextEligible &&
       session.status !== 'FINALIZED' &&
-      !isReadOnly &&
+      !operationsReadOnly &&
       !isCallingPerformer
   );
 
@@ -343,7 +347,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
   };
 
   const handleCallPerformer = async (perfId: string) => {
-    if (isCallingPerformer || isReadOnly) return;
+    if (isCallingPerformer || operationsReadOnly) return;
     setIsCallingPerformer(true);
     setErrorMessage(null);
     try {
@@ -413,7 +417,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
   };
 
   const handleFinalizeCategory = async () => {
-    if (isReadOnly) return;
+    if (operationsReadOnly) return;
     setIsFinalizing(true);
     setErrorMessage(null);
     try {
@@ -473,7 +477,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
   const activeClusterPerformances = activeTiedCluster ? activeTiedCluster.performances : [];
 
   const handleSubmitTier3 = async () => {
-    if (isReadOnly) return;
+    if (operationsReadOnly) return;
     if (!tier3WinnerId) {
       setErrorMessage('Please select the winning competitor for Tier 3 majority vote.');
       return;
@@ -1073,7 +1077,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
                   isCheckedIn={isActiveCheckedIn}
                   canCall={canCallActive}
                   isCalling={isCallingPerformer}
-                  isReadOnly={isReadOnly}
+                  isReadOnly={operationsReadOnly}
                   panelCount={panelCount}
                   scoreGroups={SCORE_GROUPS}
                   onToggleCheckIn={handleCheckIn}
