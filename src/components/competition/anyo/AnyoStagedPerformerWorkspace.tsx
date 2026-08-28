@@ -152,7 +152,7 @@ export const AnyoStagedPerformerWorkspace: React.FC<AnyoStagedPerformerWorkspace
 
         {/* Action Controls */}
         <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-          {!isCheckedIn && !isReadOnly && (
+          {!isCheckedIn && performance.status === 'WAITING' && !isReadOnly && (
             <button
               type="button"
               onClick={() => onToggleCheckIn(performance.id)}
@@ -163,7 +163,7 @@ export const AnyoStagedPerformerWorkspace: React.FC<AnyoStagedPerformerWorkspace
             </button>
           )}
 
-          {isCheckedIn && performance.status === 'WAITING' && canCall && !isReadOnly && (
+          {isCheckedIn && performance.status === 'CHECKED_IN' && canCall && !isReadOnly && (
             <button
               type="button"
               disabled={isCalling}
@@ -181,19 +181,6 @@ export const AnyoStagedPerformerWorkspace: React.FC<AnyoStagedPerformerWorkspace
                   <span>Call Athlete to Court</span>
                 </>
               )}
-            </button>
-          )}
-
-          {isCheckedIn && !isReadOnly && performance.status === 'WAITING' && (
-            <button
-              type="button"
-              disabled={isCalling}
-              onClick={() => onToggleCheckIn(performance.id)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold rounded-xl transition-colors inline-flex items-center gap-1.5"
-              title="Revoke check-in if athlete is no longer present in marshalling area"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Revoke Check-In</span>
             </button>
           )}
         </div>

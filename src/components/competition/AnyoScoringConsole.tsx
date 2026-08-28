@@ -62,7 +62,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
   const nextEligiblePerformance = useMemo(() => {
     return (
       [...performances]
-        .filter((p) => p.status === 'WAITING' || p.status === 'CALLED')
+        .filter((p) => p.status === 'WAITING' || p.status === 'CHECKED_IN' || p.status === 'CALLED')
         .sort((a, b) => a.order_number - b.order_number)[0] || null
     );
   }, [performances]);
@@ -76,7 +76,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
     const performing = performances.find((p) => p.status === 'PERFORMING');
     if (performing) return performing.id;
     const nextEligible = [...performances]
-      .filter((p) => p.status === 'WAITING' || p.status === 'CALLED')
+      .filter((p) => p.status === 'WAITING' || p.status === 'CHECKED_IN' || p.status === 'CALLED')
       .sort((a, b) => a.order_number - b.order_number)[0];
     return nextEligible?.id || (performances.length > 0 ? performances[0].id : null);
   });
@@ -144,32 +144,21 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
 
   const isPerformanceCheckedIn = (perfId: string): boolean => {
     const perf = performances.find((p) => p.id === perfId);
-    if (!perf) return false;
-    if (perf.status === 'CALLED' || perf.status === 'PERFORMING' || perf.status === 'COMPLETED') {
-      return true;
-    }
-    return checkedInIds.includes(perfId);
+    return !!perf && ['CHECKED_IN', 'CALLED', 'PERFORMING', 'COMPLETED'].includes(perf.status);
   };
 
-  const handleToggleCheckIn = (perfId: string) => {
+  const handleCheckIn = async (perfId: string) => {
     if (isReadOnly) {
       setErrorMessage('Unauthorized: Check-in actions are restricted to authorized tournament officials.');
       return;
     }
-    const isCurrentlyCheckedIn = checkedInIds.includes(perfId);
-    let nextIds: string[];
-    if (isCurrentlyCheckedIn) {
-      nextIds = checkedInIds.filter((id) => id !== perfId);
-      setSuccessMessage('Physical check-in revoked for competitor.');
-    } else {
-      nextIds = [...checkedInIds, perfId];
-      setSuccessMessage('Competitor physically checked in and marked READY.');
-    }
-    setCheckedInIds(nextIds);
+    
     try {
-      localStorage.setItem(`anyo_checked_in_${session.id}`, JSON.stringify(nextIds));
-    } catch (e) {
-      console.warn('Failed to persist checked in IDs to storage:', e);
+      await anyoScoringService.markPerformerCheckedIn(perfId);
+      setSuccessMessage('Competitor physically checked in successfully.');
+      onRefresh();
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to check in competitor.');
     }
   };
 
@@ -177,12 +166,12 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
 
   const [isCallingPerformer, setIsCallingPerformer] = useState(false);
 
-  // Can call this specific active performance? (Must be WAITING, physically checked in, no other performer is PERFORMING, and must be the next eligible in sequence)
+  // Can call this specific active performance? (Must be CHECKED_IN, no other performer is PERFORMING, and must be the next eligible in sequence)
   const isNextEligible = activePerformance?.id === nextEligiblePerformance?.id;
   const hasActivePerformer = Boolean(performingPerformance && performingPerformance.id !== activePerformance?.id);
   const canCallActive = Boolean(
     activePerformance &&
-      activePerformance.status === 'WAITING' &&
+      activePerformance.status === 'CHECKED_IN' &&
       isActiveCheckedIn &&
       !hasActivePerformer &&
       isNextEligible &&
@@ -1087,7 +1076,7 @@ export const AnyoScoringConsole: React.FC<AnyoScoringConsoleProps> = ({
                   isReadOnly={isReadOnly}
                   panelCount={panelCount}
                   scoreGroups={SCORE_GROUPS}
-                  onToggleCheckIn={handleToggleCheckIn}
+                  onToggleCheckIn={handleCheckIn}
                   onCallPerformer={handleCallPerformer}
                   onDqOrNoShow={handleDqOrNoShow}
                   onNextCompetitor={handleNextCompetitor}

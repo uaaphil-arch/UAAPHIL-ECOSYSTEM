@@ -210,6 +210,7 @@ export type AnyoPanelSize = '5_JUDGES' | '7_JUDGES';
 export type AnyoCalcMethod = 'OLYMPIC_TRIM' | 'ARITHMETIC_MEAN' | 'STANDARD_MEAN';
 export type AnyoPerformanceStatus =
   | 'WAITING'
+  | 'CHECKED_IN'
   | 'CALLED'
   | 'PERFORMING'
   | 'SCORING'

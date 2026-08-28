@@ -96,10 +96,10 @@ export const AnyoPublicScoreboardModal: React.FC<AnyoPublicScoreboardModalProps>
     );
   }, [performances, session.current_performance_id]);
 
-  // Derive Up Next Performance (Authoritative earliest WAITING or CALLED excluding active)
+  // Derive Up Next Performance (Authoritative earliest WAITING, CHECKED_IN or CALLED excluding active)
   const nextPerf = useMemo(() => {
     const queue = performances
-      .filter((p) => (p.status === 'WAITING' || p.status === 'CALLED') && p.id !== activePerf?.id)
+      .filter((p) => (p.status === 'WAITING' || p.status === 'CHECKED_IN' || p.status === 'CALLED') && p.id !== activePerf?.id)
       .sort((a, b) => a.order_number - b.order_number);
     return queue[0] || null;
   }, [performances, activePerf]);

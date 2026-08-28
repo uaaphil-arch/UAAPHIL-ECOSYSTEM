@@ -195,6 +195,17 @@ export const anyoScoringService = {
     }
   },
 
+  // 4a. Physical Court Check-in
+  async markPerformerCheckedIn(performanceId: string): Promise<void> {
+    const { error } = await supabase.rpc('mark_anyo_performer_checked_in', {
+      p_performance_id: performanceId,
+    });
+
+    if (error) {
+      console.error('mark_anyo_performer_checked_in error:', error);
+      throw new Error(error.message || 'Failed to check-in performer');
+    }
+  },
   // 4. Call / activate a performer
   async callPerformer(performanceId: string): Promise<void> {
     const { error } = await supabase.rpc('call_anyo_performer', {
